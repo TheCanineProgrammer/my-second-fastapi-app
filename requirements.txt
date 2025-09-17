@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+huggingface-hub
+openai
+pandas
+pyarrow
+rapidfuzz
