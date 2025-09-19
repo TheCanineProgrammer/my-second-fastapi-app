@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import List, Optional
-from huggingface_hub import hf_hub_download
+from datasets import load_dataset
 import os
 import openai
 import pandas as pd
-from rapidfuzz import process
+from rapidfuzz import process, fuzz
 import logging
 
 # ------------------------------
@@ -15,7 +15,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
-logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
 
 # ------------------------------
 # OpenAI API setup
@@ -42,14 +42,11 @@ class ChatRequest(BaseModel):
 # ------------------------------
 # Load dataset
 # ------------------------------
-local_path = hf_hub_download(
-    repo_id="The-CaPr-2025/base_products",
-    filename="base_products.parquet",
-    repo_type="dataset"
-)
 
-base_df = pd.read_parquet(local_path)
-random_key_to_names = base_df.set_index("random_key")[["english_name", "persian_name"]].to_dict(orient="index")
+dataset = load_dataset("The-CaPr-2025/base_products")  # pulls from HF Hub
+base_df = dataset["train"].to_pandas()
+
+#random_key_to_names = base_df.set_index("random_key")[["english_name", "persian_name"]].to_dict(orient="index")
 all_names = list(base_df.persian_name) + list(base_df.english_name)
 
 # ------------------------------
@@ -86,40 +83,36 @@ async def assistant(request: ChatRequest):
     # Scenario 2: Map query to a base product key using OpenAI
     # --------
     prompt = f'''
-    You are an assistant that maps a user query to exactly one base product key.
+    کاربر یک محصول را توصیف کرده است.
+    لطفاً فقط نام یا توضیح استاندارد همان محصول را بازگردان (مثلاً «فرشینه مخمل ترمزگیر عرض 1 متر طرح آشپزخانه کد 04»).
     
-    Available base products:
-    {random_key_to_names}
-    
-    User query: "{last_message}"
-    
-    Instructions:
-    - Return exactly one base key that matches the query.
-    - If no match is found, return null.
-    - Output ONLY the key or null, nothing else.
-    '''
+    کوئری کاربر: "{last_message}"'''
 
     key = None
     try:
-        response_oa = openai.Completion.create(
-            model="text-davinci-003",
-            prompt=prompt,
-            max_tokens=10,
-            temperature=0.3
+        client = openai.OpenAI(api_key=openai.api_key, base_url=openai.base_url)
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": "You normalize user product queries."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
         )
-        key = response_oa.choices[0].text.strip()
-        if key.lower() == "null" or key not in random_key_to_names:
-            key = None
-    except Exception as e:
-        logging.error(f"OpenAI API error: {e}")
-        key = None
+        predicted_name = response.choices[0].message.content.strip()
+        logging.info(f"{predicted_name}")
+    except Exception:
+        predicted_name = ""
+    
+    key = None
+    if predicted_name:
+        match, score, idx = process.extractOne(
+            predicted_name,
+            all_names,
+            scorer=fuzz.token_sort_ratio
+        )
 
-    # --------
-    # Fallback: rapidfuzz search if OpenAI fails
-    # --------
-    if not key:
-        best_match, score, idx = process.extractOne(last_message, all_names)
-        if score > 70:
+        if score > 70:  # accept only strong matches
             key = base_df.iloc[idx]["random_key"]
 
     response = {
