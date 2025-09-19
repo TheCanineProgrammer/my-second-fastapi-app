@@ -20,8 +20,8 @@ logging.basicConfig(
 # ------------------------------
 # OpenAI API setup
 # ------------------------------
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.api_base = os.getenv("OPENAI_API_BASE")
+#openai.api_key = os.getenv("OPENAI_API_KEY")
+#openai.api_base = os.getenv("OPENAI_API_BASE")
 
 # ------------------------------
 # FastAPI setup
@@ -90,7 +90,7 @@ async def assistant(request: ChatRequest):
 
     key = None
     try:
-        client = openai.OpenAI(api_key=openai.api_key, base_url=openai.base_url)
+        client = openai.OpenAI(api_key="trb-efb1e474594463bbea-27e8-4578-b6ff-b2aed5414b57", base_url="https://turbo.torob.com/v1")
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
