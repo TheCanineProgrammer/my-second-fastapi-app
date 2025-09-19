@@ -1,8 +1,7 @@
 fastapi
 uvicorn
 pydantic
-huggingface-hub
 openai
 pandas
-pyarrow
+datasets
 rapidfuzz
